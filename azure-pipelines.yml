@@ -1,7 +1,6 @@
-# ===============================
-# Azure DevOps Pipeline - TempApp
-# Build & Deploy to AKS
-# ===============================
+# =========================================
+# Azure DevOps Pipeline - TempApp (fixed)
+# =========================================
 
 trigger:
   branches:
@@ -26,13 +25,21 @@ stages:
     - checkout: self
 
     - script: |
+        echo "Current path:"
+        pwd
+        echo "Listing files recursively:"
+        ls -R
+      displayName: "Debug: show files"
+
+    - script: |
         echo "Logging in to ACR..."
         az acr login --name $(acrName)
 
         echo "Building Docker image..."
-        docker build -t $(acrName).azurecr.io/$(imageName):$(Build.BuildId) .
+        docker build -t $(acrName).azurecr.io/$(imageName):$(Build.BuildId) \
+          -f TempApp/Dockerfile TempApp
 
-        echo "Pushing image..."
+        echo "Pushing Docker image..."
         docker push $(acrName).azurecr.io/$(imageName):$(Build.BuildId)
       displayName: Build and Push to ACR
 
@@ -48,9 +55,9 @@ stages:
         echo "Getting AKS credentials..."
         az aks get-credentials --resource-group $(resourceGroup) --name $(aksName) --overwrite-existing
 
-        echo "Updating image version..."
+        echo "Deploying to AKS..."
         kubectl set image deployment/tempapp-deployment tempapp=$(acrName).azurecr.io/$(imageName):$(Build.BuildId) || \
-        kubectl apply -f k8s/
+        kubectl apply -f TempApp/k8s/
 
-        echo "Deployment applied successfully!"
+        echo "Deployment complete!"
       displayName: Deploy to AKS
