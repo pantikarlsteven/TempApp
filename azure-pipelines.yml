@@ -4,16 +4,13 @@
 # =============================================
 
 trigger:
-  branches:
-    include:
-      - master
+  - master
 
 variables:
-  # Adjust names as needed
-  azureSubscription: 'YOUR_AZURE_SERVICE_CONNECTION'
+  azureSubscription: 'Kubernetes Cluster Connection'
   azureResourceGroup: 'tailspin-space-game-rg'
-  acrName: 'mynet8acr'
-  aksClusterName: 'MyNet8AksCluster'
+  acrName: 'tailspinspacegame9639'
+  aksClusterName: 'tailspinspacegame-9639'
   imageName: 'mynet8api'
   dockerTag: '$(Build.BuildId)'
 
@@ -26,7 +23,7 @@ stages:
   jobs:
     - job: Build
       pool:
-        vmImage: 'ubuntu-latest'
+        name: 'my new agent pool'
       steps:
         - task: UseDotNet@2
           displayName: 'Use .NET 8 SDK'
@@ -64,7 +61,7 @@ stages:
   jobs:
     - job: DockerBuild
       pool:
-        vmImage: 'ubuntu-latest'
+        name: 'my new agent pool'
       steps:
         - task: AzureCLI@2
           displayName: 'Login to Azure'
@@ -95,7 +92,7 @@ stages:
   jobs:
     - job: AKSDeploy
       pool:
-        vmImage: 'ubuntu-latest'
+        name: 'my new agent pool'
       steps:
         - task: AzureCLI@2
           displayName: 'Get AKS Credentials'
