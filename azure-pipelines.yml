@@ -61,6 +61,8 @@ stages:
         azureResourceGroup: 'tailspin-space-game-rg'
         kubernetesCluster: 'TempAppAKS'
         namespace: 'default'
-        manifests: 'TempApp/k8s/*.yaml'
+        manifests: |
+          TempApp/k8s/deployment.yml
+          TempApp/k8s/service.yml
         containers: 'tempapp=$(acrName).azurecr.io/tempapp:$(Build.BuildId)'
 
