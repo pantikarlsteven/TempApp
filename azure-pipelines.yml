@@ -53,15 +53,16 @@ stages:
     - checkout: self
 
     # Deploy to AKS using Kubernetes service connection
-    - task: Kubernetes@1
-      displayName: Deploy to AKS
+    - task: KubernetesManifest@1
       inputs:
-        connectionType: 'Azure Resource Manager'
-        kubernetesCluster: '$(aksClusterName)'
+        action: 'deploy'
+        connectionType: 'azureResourceManager'
+        azureSubscriptionConnection: 'Kubernetes Cluster Connection'
+        azureResourceGroup: 'tailspin-space-game-rg'
+        kubernetesCluster: 'TempAppAKS'
         namespace: 'default'
-        command: apply
-        useConfigurationFile: true
-        configuration: |
+        manifests: |
           TempApp/k8s/deployment.yaml
           TempApp/k8s/service.yaml
+        containers: 'tempapp=$(acrName).azurecr.io/tempapp:$(Build.BuildId)'
 
