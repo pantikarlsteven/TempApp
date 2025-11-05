@@ -1,5 +1,5 @@
 # =========================================
-# Azure DevOps Pipeline - TempApp (fixed)
+# Azure DevOps Pipeline - TempApp (no az login)
 # =========================================
 
 trigger:
@@ -13,8 +13,8 @@ pool:
 variables:
   imageName: "tempapp"
   acrName: "tempappacr"
+  aksClusterName: "TempAppAKS"
   resourceGroup: "tailspin-space-game-rg"
-  aksName: "TempAppAKS"
 
 stages:
 - stage: Build
@@ -24,24 +24,25 @@ stages:
     steps:
     - checkout: self
 
+    # Debug: list files
     - script: |
         echo "Current path:"
         pwd
-        echo "Listing files recursively:"
+        echo "Files in working directory:"
         ls -R
       displayName: "Debug: show files"
 
-    - script: |
-        echo "Logging in to ACR..."
-        az acr login --name $(acrName)
-
-        echo "Building Docker image..."
-        docker build -t $(acrName).azurecr.io/$(imageName):$(Build.BuildId) \
-          -f TempApp/Dockerfile TempApp
-
-        echo "Pushing Docker image..."
-        docker push $(acrName).azurecr.io/$(imageName):$(Build.BuildId)
-      displayName: Build and Push to ACR
+    # Build and push using Docker task with ACR service connection
+    - task: Docker@2
+      displayName: Build and Push Docker Image
+      inputs:
+        command: buildAndPush
+        containerRegistry: 'Container Registry Connection'
+        repository: '$(acrName).azurecr.io/$(imageName)'
+        dockerfile: 'TempApp/Dockerfile'
+        buildContext: 'TempApp'
+        tags: |
+          $(Build.BuildId)
 
 - stage: Deploy
   displayName: Deploy to AKS
@@ -51,13 +52,16 @@ stages:
     steps:
     - checkout: self
 
-    - script: |
-        echo "Getting AKS credentials..."
-        az aks get-credentials --resource-group $(resourceGroup) --name $(aksName) --overwrite-existing
-
-        echo "Deploying to AKS..."
-        kubectl set image deployment/tempapp-deployment tempapp=$(acrName).azurecr.io/$(imageName):$(Build.BuildId) || \
-        kubectl apply -f TempApp/k8s/
-
-        echo "Deployment complete!"
+    # Deploy to AKS using Kubernetes service connection
+    - task: Kubernetes@1
       displayName: Deploy to AKS
+      inputs:
+        connectionType: 'Azure Resource Manager'
+        kubernetesCluster: '$(aksClusterName)'
+        namespace: 'default'
+        command: apply
+        useConfigurationFile: true
+        configuration: |
+          TempApp/k8s/deployment.yaml
+          TempApp/k8s/service.yaml
+
