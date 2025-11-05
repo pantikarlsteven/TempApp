@@ -1,120 +1,56 @@
-# =============================================
-# Azure DevOps Pipeline: Build + Docker + AKS
-# For .NET 8 Web API
-# =============================================
+# ===============================
+# Azure DevOps Pipeline - TempApp
+# Build & Deploy to AKS
+# ===============================
 
 trigger:
-  - master
+  branches:
+    include:
+      - master
+
+pool:
+  name: "my new agent pool"
 
 variables:
-  azureSubscription: 'Kubernetes Cluster Connection'
-  azureResourceGroup: 'tailspin-space-game-rg'
-  acrName: 'tailspinspacegame9639'
-  aksClusterName: 'tailspinspacegame-9639'
-  imageName: 'mynet8api'
-  dockerTag: '$(Build.BuildId)'
+  imageName: "tempapp"
+  acrName: "tempappacr"
+  resourceGroup: "tailspin-space-game-rg"
+  aksName: "TempAppAKS"
 
 stages:
-# =============================================
-# Stage 1: Build .NET Project
-# =============================================
 - stage: Build
-  displayName: 'Build .NET Project'
+  displayName: Build and Push Docker Image
   jobs:
-    - job: Build
-      pool:
-        name: 'my new agent pool'
-      steps:
-        - task: UseDotNet@2
-          displayName: 'Use .NET 8 SDK'
-          inputs:
-            packageType: 'sdk'
-            version: '8.x'
+  - job: Build
+    steps:
+    - checkout: self
 
-        - task: DotNetCoreCLI@2
-          displayName: 'Restore'
-          inputs:
-            command: 'restore'
-            projects: '**/*.csproj'
+    - script: |
+        echo "Logging in to ACR..."
+        az acr login --name $(acrName)
 
-        - task: DotNetCoreCLI@2
-          displayName: 'Build'
-          inputs:
-            command: 'build'
-            projects: '**/*.csproj'
-            arguments: '--configuration Release'
+        echo "Building Docker image..."
+        docker build -t $(acrName).azurecr.io/$(imageName):$(Build.BuildId) .
 
-        - task: DotNetCoreCLI@2
-          displayName: 'Publish'
-          inputs:
-            command: 'publish'
-            publishWebProjects: true
-            arguments: '--configuration Release --output $(Build.ArtifactStagingDirectory)/publish'
-            zipAfterPublish: false
+        echo "Pushing image..."
+        docker push $(acrName).azurecr.io/$(imageName):$(Build.BuildId)
+      displayName: Build and Push to ACR
 
-# =============================================
-# Stage 2: Build & Push Docker Image to ACR
-# =============================================
-- stage: Docker
-  displayName: 'Build and Push Docker Image'
+- stage: Deploy
+  displayName: Deploy to AKS
   dependsOn: Build
   jobs:
-    - job: DockerBuild
-      pool:
-        name: 'my new agent pool'
-      steps:
-        - task: AzureCLI@2
-          displayName: 'Login to Azure'
-          inputs:
-            azureSubscription: $(azureSubscription)
-            scriptType: bash
-            scriptLocation: inlineScript
-            inlineScript: |
-              echo "Logging into Azure Container Registry..."
-              az acr login --name $(acrName)
+  - job: Deploy
+    steps:
+    - checkout: self
 
-        - script: |
-            echo "Building Docker image..."
-            docker build -t $(acrName).azurecr.io/$(imageName):$(dockerTag) .
-          displayName: 'Build Docker Image'
+    - script: |
+        echo "Getting AKS credentials..."
+        az aks get-credentials --resource-group $(resourceGroup) --name $(aksName) --overwrite-existing
 
-        - script: |
-            echo "Pushing Docker image to ACR..."
-            docker push $(acrName).azurecr.io/$(imageName):$(dockerTag)
-          displayName: 'Push Docker Image'
+        echo "Updating image version..."
+        kubectl set image deployment/tempapp-deployment tempapp=$(acrName).azurecr.io/$(imageName):$(Build.BuildId) || \
+        kubectl apply -f k8s/
 
-# =============================================
-# Stage 3: Deploy to AKS
-# =============================================
-- stage: Deploy
-  displayName: 'Deploy to AKS'
-  dependsOn: Docker
-  jobs:
-    - job: AKSDeploy
-      pool:
-        name: 'my new agent pool'
-      steps:
-        - task: AzureCLI@2
-          displayName: 'Get AKS Credentials'
-          inputs:
-            azureSubscription: $(azureSubscription)
-            scriptType: bash
-            scriptLocation: inlineScript
-            inlineScript: |
-              az aks get-credentials --resource-group $(azureResourceGroup) --name $(aksClusterName)
-        
-        - script: |
-            echo "Creating secret for ACR in AKS..."
-            kubectl create secret docker-registry acr-secret \
-              --docker-server=$(acrName).azurecr.io \
-              --docker-username=$(acrName) \
-              --docker-password=$(az acr credential show --name $(acrName) --query "passwords[0].value" -o tsv) \
-              --docker-email=example@example.com \
-              --dry-run=client -o yaml | kubectl apply -f -
-          displayName: 'Create ACR Secret'
-
-        - script: |
-            echo "Deploying to AKS..."
-            kubectl apply -f k8s/deployment.yaml
-            kubectl apply -f k8s/service.yaml
-          displayName: 'Deploy to AKS'
+        echo "Deployment applied successfully!"
+      displayName: Deploy to AKS
