@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: mynet8api
-        image: mynet8acr.azurecr.io/mynet8api:latest
+        image: tailspinspacegame9639.azurecr.io/mynet8api:latest
         ports:
         - containerPort: 80
       imagePullSecrets:
