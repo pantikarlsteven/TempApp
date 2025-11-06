@@ -1,5 +1,5 @@
 # =========================================
-# Azure DevOps Pipeline - TempApp (no az login)
+# Azure DevOps Pipeline - TempApp (.NET 8 + AKS)
 # =========================================
 
 trigger:
@@ -13,56 +13,67 @@ pool:
 variables:
   imageName: "tempapp"
   acrName: "tempappacr"
-  aksClusterName: "TempAppAKS"
+  aksName: "TempAppAKS"
   resourceGroup: "tailspin-space-game-rg"
+  tag: "$(Build.BuildId)"
 
 stages:
+# ======================
+# 1. BUILD AND PUSH IMAGE
+# ======================
 - stage: Build
   displayName: Build and Push Docker Image
   jobs:
   - job: Build
+    displayName: Build & Push to ACR
     steps:
     - checkout: self
 
-    # Debug: list files
+    # Debug - show files
     - script: |
-        echo "Current path:"
-        pwd
-        echo "Files in working directory:"
+        echo "Current path: $(System.DefaultWorkingDirectory)"
         ls -R
-      displayName: "Debug: show files"
+      displayName: "Debug: List files"
 
-    # Build and push using Docker task with ACR service connection
+    # Login to ACR (uses Docker task)
     - task: Docker@2
-      displayName: Build and Push Docker Image
+      displayName: Build and Push image to ACR
       inputs:
-        command: buildAndPush
         containerRegistry: 'Container Registry Connection'
-        repository: '$(acrName).azurecr.io/$(imageName)'
-        dockerfile: 'TempApp/Dockerfile'
+        repository: '$(imageName)'
+        command: 'buildAndPush'
+        Dockerfile: 'TempApp/Dockerfile'
         buildContext: 'TempApp'
         tags: |
-          $(Build.BuildId)
+          $(tag)
 
+# ======================
+# 2. DEPLOY TO AKS
+# ======================
 - stage: Deploy
   displayName: Deploy to AKS
   dependsOn: Build
   jobs:
-  - job: Deploy
-    steps:
-    - checkout: self
+  - deployment: DeployToAKS
+    displayName: Deploy to AKS via KubernetesManifest
+    environment: 'aks-tempapp'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
 
-    # Deploy to AKS using Kubernetes service connection
-    - task: KubernetesManifest@1
-      inputs:
-        action: 'deploy'
-        connectionType: 'azureResourceManager'
-        azureSubscriptionConnection: 'Kubernetes Cluster Connection'
-        azureResourceGroup: 'tailspin-space-game-rg'
-        kubernetesCluster: 'TempAppAKS'
-        namespace: 'default'
-        manifests: |
-          TempApp/k8s/deployment.yml
-          TempApp/k8s/service.yml
-        containers: 'tempapp=$(acrName).azurecr.io/tempapp:$(Build.BuildId)'
-
+          - task: KubernetesManifest@1
+            displayName: Deploy manifests to AKS
+            inputs:
+              action: 'deploy'
+              connectionType: 'azureResourceManager'
+              azureSubscriptionConnection: 'Kubernetes Cluster Connection'
+              azureResourceGroup: '$(resourceGroup)'
+              kubernetesCluster: '$(aksName)'
+              namespace: 'default'
+              manifests: |
+                TempApp/k8s/deployment.yaml
+                TempApp/k8s/service.yaml
+              containers: |
+                $(acrName).azurecr.io/$(imageName):$(tag)
