@@ -73,7 +73,7 @@ stages:
               kubernetesCluster: '$(aksName)'
               namespace: 'default'
               manifests: |
-                TempApp/k8s/deployment.yaml
-                TempApp/k8s/service.yaml
+                TempApp/k8s/deployment.yml
+                TempApp/k8s/service.yml
               containers: |
                 $(acrName).azurecr.io/$(imageName):$(tag)
